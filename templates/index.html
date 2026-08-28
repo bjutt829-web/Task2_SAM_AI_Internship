@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task 2 Sam AI - AI PDF Question Answering</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #E6F4F1 0%, #E0F2FE 45%, #F3E8FF 85%, #FCF4FF 100%);
+            background-attachment: fixed;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        .task-banner {
+            background: linear-gradient(135deg, #008B99 0%, #00A8B5 100%);
+            box-shadow: 0 10px 25px -5px rgba(0, 139, 153, 0.3);
+        }
+        .welcome-card {
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.06);
+        }
+        .context-card {
+            background: #FFFFFF;
+            color: #0F172A;
+            border: 1.5px solid #CBD5E1;
+            border-left: 6px solid #00A8B5;
+            box-shadow: 0 8px 20px -4px rgba(0, 139, 153, 0.12);
+        }
+        .dropzone-box {
+            background-color: #F8FAFC;
+            border: 2px dashed #00A8B5;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex text-slate-800">
+
+    <!-- STREAMLIT-STYLE SIDEBAR -->
+    <aside class="w-80 min-h-screen bg-white/90 backdrop-blur-md border-r border-slate-200 p-6 flex flex-col justify-between shrink-0 shadow-sm">
+        <div>
+            <!-- LOGO & TITLE -->
+            <div class="flex items-center space-x-3 mb-2">
+                <img src="https://img.icons8.com/color/96/pdf-2.png" class="w-12 h-12" alt="PDF Icon">
+                <h1 class="text-xl font-bold text-slate-900">Task 2 Sam AI</h1>
+            </div>
+            <p class="text-xs text-slate-500 mb-6">Upload a PDF to ask questions and extract precise answers.</p>
+
+            <!-- UPLOAD SECTION -->
+            <div class="mb-6">
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">Upload PDF Document</label>
+                <div class="dropzone-box rounded-xl p-4 text-center">
+                    <input type="file" id="pdfFile" accept=".pdf" class="hidden" onchange="uploadPDF()">
+                    <button onclick="document.getElementById('pdfFile').click()" class="w-full bg-[#00A8B5] hover:bg-[#008B99] text-white font-semibold py-2.5 px-4 rounded-lg shadow-sm transition flex items-center justify-center space-x-2 text-sm">
+                        <i class="fa-solid fa-upload"></i>
+                        <span>Upload File</span>
+                    </button>
+                    <p class="text-[11px] text-slate-500 mt-2">200MB per file • PDF</p>
+                </div>
+                <div id="uploadStatus" class="mt-2 text-xs font-semibold text-center"></div>
+            </div>
+
+            <hr class="border-slate-200 my-4">
+
+            <!-- ENGINE SETTINGS -->
+            <div class="mb-6">
+                <h2 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3"><i class="fa-solid fa-gear mr-1"></i> Engine Settings</h2>
+                <div class="mb-3">
+                    <label class="block text-xs text-slate-600 mb-1">Gemini API Key (Optional)</label>
+                    <input type="password" id="apiKey" placeholder="AI Key for deep summaries" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:border-[#00A8B5]">
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs text-slate-600 mb-1">
+                        <span>Context Passages (Top-K)</span>
+                        <span id="kVal" class="font-bold text-[#00A8B5]">4</span>
+                    </div>
+                    <input type="range" id="topK" min="1" max="8" value="4" oninput="document.getElementById('kVal').innerText=this.value" class="w-full accent-[#00A8B5]">
+                </div>
+            </div>
+
+            <!-- DOCUMENT INSIGHTS -->
+            <div id="statsBox" class="hidden border-t border-slate-200 pt-4 mb-4">
+                <h2 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">📊 Document Insights</h2>
+                <div class="grid grid-cols-2 gap-2 text-center mb-3">
+                    <div class="bg-emerald-50 border border-emerald-200 p-2 rounded-xl">
+                        <span class="text-[10px] text-emerald-700 font-bold block">TOTAL PAGES</span>
+                        <span id="totalPages" class="text-base font-extrabold text-emerald-900">0</span>
+                    </div>
+                    <div class="bg-amber-50 border border-amber-200 p-2 rounded-xl">
+                        <span class="text-[10px] text-amber-700 font-bold block">TOTAL WORDS</span>
+                        <span id="totalWords" class="text-sm font-extrabold text-amber-900">0</span>
+                    </div>
+                </div>
+                <div id="sampleQs" class="space-y-1"></div>
+            </div>
+        </div>
+
+        <button onclick="resetApp()" class="w-full border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold py-2 px-3 rounded-lg text-xs transition flex items-center justify-center space-x-1">
+            <i class="fa-solid fa-trash"></i>
+            <span>Clear Chat & Reset</span>
+        </button>
+    </aside>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl">
+        <!-- HEADER BANNER -->
+        <div class="task-banner text-white rounded-2xl p-6 text-center mb-6">
+            <h1 class="text-3xl font-extrabold tracking-wide uppercase">TASK 2 SAM AI</h1>
+            <span class="inline-block bg-white text-[#FF5252] font-bold px-6 py-1 rounded-full text-base mt-2 shadow-sm">
+                AI PDF Question Answering
+            </span>
+        </div>
+
+        <!-- WELCOME BANNER (WHEN NO PDF LOADED) -->
+        <div id="welcomeBanner" class="space-y-6">
+            <div class="bg-blue-50/80 border border-blue-200 text-blue-900 rounded-xl p-4 text-sm flex items-center space-x-3">
+                <i class="fa-solid fa-hand-point-left text-lg text-blue-600"></i>
+                <span>Please upload a PDF document in the sidebar to begin!</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="welcome-card rounded-2xl p-5">
+                    <h3 class="font-bold text-[#008B99] mb-1">📄 Upload PDF Document</h3>
+                    <p class="text-xs text-slate-600">Upload reports, contracts, academic papers, or manuals directly from the sidebar.</p>
+                </div>
+                <div class="welcome-card rounded-2xl p-5">
+                    <h3 class="font-bold text-[#008B99] mb-1">❓ Ask Questions</h3>
+                    <p class="text-xs text-slate-600">Query specific facts, summaries, key metrics, or data points from your document.</p>
+                </div>
+                <div class="welcome-card rounded-2xl p-5">
+                    <h3 class="font-bold text-[#008B99] mb-1">📌 Display Response with Context</h3>
+                    <p class="text-xs text-slate-600">Extract relevant answers with exact page numbers and context snippets.</p>
+                </div>
+            </div>
+
+            <div class="welcome-card rounded-2xl p-6">
+                <h3 class="font-bold text-[#008B99] text-base mb-3">🌟 User-Friendly Interface & Features</h3>
+                <ul class="text-xs text-slate-700 space-y-2">
+                    <li>• <b>Smart Vector Search:</b> Automatically indexes text passages using TF-IDF & Cosine Similarity.</li>
+                    <li>• <b>Page-by-Page Citations:</b> Displays exact page numbers where information was extracted.</li>
+                    <li>• <b>Dual AI Answering Engine:</b> Works offline using contextual extraction or with Google Gemini for rich summaries.</li>
+                    <li>• <b>Interactive UI:</b> Responsive pastel theme designed for seamless PDF exploration.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- CHAT AREA (LOADED AFTER PDF UPLOAD) -->
+        <div id="chatContainer" class="hidden flex-col justify-between h-[calc(100vh-220px)]">
+            <div id="chatHistory" class="space-y-4 overflow-y-auto pr-2 pb-4 flex-1"></div>
+
+            <form onsubmit="handleQuery(event)" class="mt-4 flex space-x-3 bg-white p-2 border border-slate-300 rounded-2xl shadow-sm">
+                <input type="text" id="userQuery" placeholder="Ask a question about your PDF document..." class="flex-1 px-4 py-2.5 text-sm bg-transparent focus:outline-none text-slate-800">
+                <button type="submit" class="bg-[#00A8B5] hover:bg-[#008B99] text-white font-bold px-5 py-2.5 rounded-xl shadow transition">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </form>
+        </div>
+    </main>
+
+    <script>
+        window.docChunks = [];
+
+        async function uploadPDF() {
+            const fileInput = document.getElementById('pdfFile');
+            const status = document.getElementById('uploadStatus');
+            
+            if (!fileInput.files.length) return;
+
+            const formData = new FormData();
+            formData.append('pdf', fileInput.files[0]);
+
+            status.className = "mt-2 text-xs font-semibold text-center text-teal-600";
+            status.innerHTML = "⏳ Indexing PDF document...";
+
+            try {
+                const res = await fetch('/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+
+                if (res.ok) {
+                    window.docChunks = data.chunks || [];
+                    status.className = "mt-2 text-xs font-semibold text-center text-emerald-600";
+                    status.innerHTML = `✅ Indexed: <b>${data.filename}</b>`;
+
+                    document.getElementById('statsBox').classList.remove('hidden');
+                    document.getElementById('totalPages').innerText = data.total_pages;
+                    document.getElementById('totalWords').innerText = data.total_words.toLocaleString();
+
+                    // Render Sample Question Buttons
+                    const sampleDiv = document.getElementById('sampleQs');
+                    sampleDiv.innerHTML = `<span class="text-[11px] font-bold text-slate-700 block mb-1">Sample Questions:</span>`;
+                    (data.sample_questions || []).forEach(q => {
+                        sampleDiv.innerHTML += `
+                            <button onclick="askPreset('${q.replace(/'/g, "\\'")}')" class="w-full text-left text-[11px] bg-slate-100 hover:bg-teal-50 text-slate-700 p-2 rounded-lg truncate border border-slate-200">
+                                ❓ ${q}
+                            </button>
+                        `;
+                    });
+
+                    // Switch view to Chat Container
+                    document.getElementById('welcomeBanner').classList.add('hidden');
+                    const chatContainer = document.getElementById('chatContainer');
+                    chatContainer.classList.remove('hidden');
+                    chatContainer.classList.add('flex');
+
+                    const chatHistory = document.getElementById('chatHistory');
+                    chatHistory.innerHTML = `
+                        <div class="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl p-4 text-xs shadow-sm">
+                            ✅ Successfully processed <b>${data.filename}</b> (${data.total_pages} pages, ${data.total_words.toLocaleString()} words).<br/><br/>
+                            Ask me any question about the contents of this document!
+                        </div>
+                    `;
+                } else {
+                    status.className = "mt-2 text-xs font-semibold text-center text-red-600";
+                    status.innerHTML = `❌ ${data.error}`;
+                }
+            } catch (err) {
+                status.className = "mt-2 text-xs font-semibold text-center text-red-600";
+                status.innerHTML = `❌ Error processing file.`;
+            }
+        }
+
+        function askPreset(q) {
+            document.getElementById('userQuery').value = q;
+            handleQuery(new Event('submit'));
+        }
+
+        async function handleQuery(e) {
+            e.preventDefault();
+            const input = document.getElementById('userQuery');
+            const chat = document.getElementById('chatHistory');
+            const apiKey = document.getElementById('apiKey').value;
+            const query = input.value.trim();
+
+            if (!query) return;
+            if (!window.docChunks.length) {
+                alert("Please upload a PDF document first.");
+                return;
+            }
+
+            // Append User Question
+            chat.innerHTML += `
+                <div class="flex justify-end">
+                    <div class="bg-teal-600 text-white font-medium rounded-2xl px-4 py-3 text-xs max-w-[80%] shadow">
+                        ${query}
+                    </div>
+                </div>
+            `;
+            input.value = "";
+            chat.scrollTop = chat.scrollHeight;
+
+            const loadId = 'load-' + Date.now();
+            chat.innerHTML += `<div id="${loadId}" class="text-xs text-slate-500 italic">Searching document context...</div>`;
+
+            try {
+                const res = await fetch('/query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question: query, api_key: apiKey, chunks: window.docChunks })
+                });
+                const data = await res.json();
+                document.getElementById(loadId).remove();
+
+                if (res.ok) {
+                    let contextHtml = '';
+                    if (data.context_chunks && data.context_chunks.length) {
+                        contextHtml = `<details class="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-2"><summary class="cursor-pointer text-xs font-bold text-teal-700">📌 Extracted Source Context (PDF Citations)</summary><div class="mt-2 space-y-2">`;
+                        data.context_chunks.forEach(c => {
+                            contextHtml += `
+                                <div class="context-card p-3 rounded-xl text-xs">
+                                    <span class="bg-emerald-600 text-white font-bold px-3 py-1 rounded-full text-[10px]">Page ${c.page_num}</span>
+                                    <span class="bg-purple-600 text-white font-bold px-3 py-1 rounded-full text-[10px] float-right">Relevance: ${c.similarity_score}</span>
+                                    <p class="mt-3 text-slate-900 leading-relaxed">${c.text}</p>
+                                </div>
+                            `;
+                        });
+                        contextHtml += `</div></details>`;
+                    }
+
+                    chat.innerHTML += `
+                        <div class="bg-white border border-slate-200 text-slate-800 rounded-2xl p-4 text-xs shadow-sm max-w-[90%] space-y-2">
+                            <div class="whitespace-pre-line leading-relaxed">${data.answer}</div>
+                            <div class="text-[10px] text-slate-400">Engine Mode: <b>${data.mode}</b></div>
+                            ${contextHtml}
+                        </div>
+                    `;
+                } else {
+                    chat.innerHTML += `<div class="bg-red-50 text-red-700 p-3 rounded-xl text-xs">❌ ${data.error}</div>`;
+                }
+            } catch (err) {
+                document.getElementById(loadId).remove();
+                chat.innerHTML += `<div class="bg-red-50 text-red-700 p-3 rounded-xl text-xs">❌ Connection error.</div>`;
+            }
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function resetApp() {
+            window.docChunks = [];
+            document.getElementById('pdfFile').value = "";
+            document.getElementById('uploadStatus').innerText = "";
+            document.getElementById('statsBox').classList.add('hidden');
+            document.getElementById('chatContainer').classList.add('hidden');
+            document.getElementById('chatContainer').classList.remove('flex');
+            document.getElementById('welcomeBanner').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
